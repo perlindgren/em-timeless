@@ -89,3 +89,56 @@ impl<const FREQ: u32> Clock<FREQ> for DwtSystick<FREQ> {
 //         // NOOP with SysTick interrupt
 //     }
 // }
+
+use cortex_m_rt::exception;
+use cortex_m_semihosting::{debug, hprintln};
+use lm3s6965::Interrupt;
+
+// Emulation of registers for hardware timer
+pub struct Timer<T> {
+    pub counter: T,
+    pub compare: T,
+    pub enable: bool,
+}
+
+impl Timer<i16> {
+    const fn reset() -> Self {
+        // reset state
+        Timer {
+            counter: 0,
+            compare: 0,
+            enable: false,
+        }
+    }
+
+    pub fn init(&mut self, dcb: &mut DCB, mut dwt: DWT, mut systick: SYST) {
+        dcb.enable_trace();
+        DWT::unlock();
+        dwt.enable_cycle_counter();
+
+        systick.set_clock_source(SystClkSource::Core);
+        systick.set_reload(1000_0000); // 1MHz -> 1 sec
+        systick.clear_current();
+        systick.enable_counter();
+        systick.enable_interrupt();
+    }
+
+    pub fn tick(&mut self) {
+        hprintln!("tick @{:?}", self.counter);
+        if self.enable {
+            self.counter += 1;
+            if self.counter >= self.compare {
+                cortex_m::peripheral::NVIC::pend(Interrupt::GPIOA)
+            }
+        }
+    }
+}
+
+pub static mut TIMER: Timer<i16> = Timer::reset();
+
+// Timer emulation
+#[exception]
+fn SysTick() {
+    let mut timer = unsafe { &mut TIMER };
+    timer.tick();
+}

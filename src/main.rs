@@ -19,29 +19,28 @@ fn main() -> ! {
 
     let mut p = Peripherals::take().unwrap();
 
-    let timer = DwtSystick::<FREQ>::new(&mut p.DCB, p.DWT, p.SYST, FREQ);
+    // let syst = DwtSystick::<FREQ>::new(&mut p.DCB, p.DWT, p.SYST, FREQ);
+
     unsafe {
-        MONO = Some(timer);
+        //   MONO = Some(syst);
         NVIC::unmask(lm3s6965::Interrupt::GPIOA);
     }
+
+    let mut timer = unsafe { &mut TIMER };
+    timer.compare = 5;
+    timer.enable = true;
+    timer.init(&mut p.DCB, p.DWT, p.SYST);
 
     loop {}
 }
 const FREQ: u32 = 1000_0000;
 static mut MONO: Option<DwtSystick<FREQ>> = None;
 
+// Compare interrupt
 #[interrupt]
 fn GPIOA() {
-    hprintln!("gpioa");
-}
+    let mut timer = unsafe { &mut TIMER };
+    hprintln!("compare interrupt @{}", timer.counter);
 
-#[exception]
-fn SysTick() {
-    static mut NR: u32 = 0;
-    if *NR == 10 {
-        debug::exit(debug::EXIT_SUCCESS); // Exit QEMU simulator
-    }
-    hprintln!("tick {:?}", DWT::get_cycle_count()).ok();
-    NVIC::pend(GPIOA);
-    *NR += 1;
+    debug::exit(debug::EXIT_SUCCESS); // Exit QEMU simulator
 }
